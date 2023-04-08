@@ -6,6 +6,15 @@ var User = mongoose.model("User");
 var auth = require("../auth");
 const { sendEvent } = require("../../lib/event");
 
+
+const { Configuration, OpenAIApi } = require("openai");
+
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+const openai = new OpenAIApi(configuration);
+
 // Preload item objects on routes with ':item'
 router.param("item", function(req, res, next, slug) {
   Item.findOne({ slug: slug })
@@ -139,7 +148,7 @@ router.get("/feed", auth.required, function(req, res, next) {
 
 router.post("/", auth.required, function(req, res, next) {
   User.findById(req.payload.id)
-    .then(function(user) {
+    .then(async function(user) {
       if (!user) {
         return res.sendStatus(401);
       }
@@ -147,6 +156,19 @@ router.post("/", auth.required, function(req, res, next) {
       var item = new Item(req.body.item);
 
       item.seller = user;
+
+      if (!item.image) {
+
+        const response = await openai.createImage({
+          prompt: req.body.item.title,
+          n: 1,
+          size: "256x256",
+        });
+        let image_url = response.data.data[0].url;
+
+        item.image = image_url;
+
+      }
 
       return item.save().then(function() {
         sendEvent('item_created', { item: req.body.item })
@@ -183,7 +205,7 @@ router.put("/:item", auth.required, function(req, res, next) {
       }
 
       if (typeof req.body.item.image !== "undefined") {
-        req.item.image = req.body.item.image;
+        req.item.image = req.body.item.image; 
       }
 
       if (typeof req.body.item.tagList !== "undefined") {
